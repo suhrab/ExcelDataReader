@@ -177,5 +177,11 @@ namespace ExcelDataReader.Core.OpenXmlFormat
                 _disposed = true;
             }
         }
+
+        public Stream GetWorkSheetStream(string sheetPath)
+        {
+            sheetPath = (!sheetPath.StartsWith("/xl/", StringComparison.OrdinalIgnoreCase)) ? ("xl/" + sheetPath) : sheetPath.Substring(1);
+            return FindEntry(sheetPath)?.Open();
+        }
     }
 }

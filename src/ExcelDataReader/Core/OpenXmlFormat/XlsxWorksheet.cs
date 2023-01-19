@@ -1,7 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Xml;
 using ExcelDataReader.Core.NumberFormat;
 using ExcelDataReader.Core.OpenXmlFormat.Records;
+
+
 
 namespace ExcelDataReader.Core.OpenXmlFormat
 {
@@ -21,6 +26,16 @@ namespace ExcelDataReader.Core.OpenXmlFormat
 
             if (string.IsNullOrEmpty(Path))
                 return;
+
+            using (Stream sheetStream1 = Document.GetWorkSheetStream(Path))
+            {
+                if (ReadDimension(sheetStream1, out var fieldCount, out var rowCount))
+                {
+                    FieldCount = fieldCount;
+                    RowCount = rowCount;
+                    return;
+                }
+            }
 
             using var sheetStream = Document.GetWorksheetReader(Path);
             if (sheetStream == null)
@@ -193,6 +208,64 @@ namespace ExcelDataReader.Core.OpenXmlFormat
                 default:
                     return value;
             }
+        }
+
+        private static int ExcelColumnNameToNumber(string columnName)
+        {
+            if (string.IsNullOrEmpty(columnName))
+            {
+                throw new ArgumentNullException("columnName");
+            }
+            columnName = columnName.ToUpperInvariant();
+            int sum = 0;
+            for (int i = 0; i < columnName.Length; i++)
+            {
+                sum *= 26;
+                sum += columnName[i] - 65 + 1;
+            }
+            return sum;
+        }
+
+        private bool ReadDimension(Stream sheetStream, out int fieldCount, out int rowCount)
+        {
+            fieldCount = 0;
+            rowCount = 0;
+            using XmlReader reader = XmlReader.Create(sheetStream);
+            if (!reader.IsStartElement("worksheet", "http://schemas.openxmlformats.org/spreadsheetml/2006/main"))
+            {
+                return false;
+            }
+            if (!XmlReaderHelper.ReadFirstContent(reader))
+            {
+                return false;
+            }
+            string dimension = null;
+            while (!reader.EOF)
+            {
+                if (reader.IsStartElement("dimension", "http://schemas.openxmlformats.org/spreadsheetml/2006/main"))
+                {
+                    dimension = reader.GetAttribute("ref");
+                    break;
+                }
+                if (!XmlReaderHelper.SkipContent(reader))
+                {
+                    break;
+                }
+            }
+            if (dimension == null)
+            {
+                return false;
+            }
+            string[] parts = dimension.Split(':');
+            if (parts.Length != 2)
+            {
+                return false;
+            }
+            int lastColumnNumber = ExcelColumnNameToNumber(new string(parts[1].Where((char x) => char.IsLetter(x)).ToArray()));
+            int lastRowNumber = int.Parse(new string(parts[1].Where((char x) => char.IsDigit(x)).ToArray()));
+            fieldCount = lastColumnNumber;
+            rowCount = lastRowNumber;
+            return true;
         }
     }
 }
